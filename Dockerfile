@@ -11,10 +11,22 @@ ARG DEBIAN_FRONTEND=noninteractive
 # ---------- Core build tools, Linters, Python, Node, Wasm deps ----------
 RUN --mount=type=cache,target=/var/cache/apt \
     apt-get update && \
-    # Core build tools
+    # Install Docker dependencies
+    apt-get install -y --no-install-recommends \
+      ca-certificates curl gnupg && \
+    install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
+    chmod a+r /etc/apt/keyrings/docker.gpg && \
+    echo \
+      "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+      tee /etc/apt/sources.list.d/docker.list > /dev/null && \
+    apt-get update && \
+    # Core build tools, Linters, Python, Node, Wasm deps, and Docker
     apt-get install -y --no-install-recommends \
       build-essential clang curl git pkg-config ca-certificates gnupg libssl-dev \
-      wget software-properties-common lsb-release shellcheck hyperfine openssh-client && \
+      wget software-properties-common lsb-release shellcheck hyperfine openssh-client tmux `# Force cache bust` \
+      docker-ce docker-ce-cli containerd.io && \
     # Add Deadsnakes PPA for newer Python versions
     add-apt-repository -y ppa:deadsnakes/ppa && \
     # Add NodeSource repository for up-to-date NodeJS (v22+)
@@ -92,12 +104,15 @@ ARG GID=1000
 RUN userdel -r ubuntu && \
     groupadd -g ${GID} dev && \
     useradd -m -s /bin/bash -u ${UID} -g ${GID} dev && \
+    # Add dev user to the docker group
+    usermod -aG docker dev && \
     # Fix ownership of npm global modules so dev user can write to them
     chown -R dev:dev /usr/lib/node_modules
 
 USER dev
 WORKDIR /workspace
 COPY README.md .
+COPY CLAUDE.md .
 
 # Configure git for the dev user
 RUN git config --global user.email "swarm@dreamlab-ai.com" && \

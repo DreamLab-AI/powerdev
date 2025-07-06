@@ -6,6 +6,11 @@ IMAGE=powerdev:latest
 NAME=swarm_container
 ENVFILE=.env     # ← update to match your actual env file
 
+# Source the .env file to make variables available to the script
+if [[ -f "${ENVFILE}" ]]; then
+  source "${ENVFILE}"
+fi
+
 # ---- tunables (edit if you change the Dockerfile flags) ---------------------
 RUN_OPTS=(
   --gpus all
@@ -23,6 +28,8 @@ RUN_OPTS=(
   -v "${SSH_AUTH_SOCK:-/tmp/ssh-agent.sock}:/tmp/ssh-agent.sock"
   -e SSH_AUTH_SOCK=/tmp/ssh-agent.sock
   --network docker_ragflow
+  -v /var/run/docker.sock:/var/run/docker.sock # Mount Docker socket for DinD
+  --privileged # Required for Docker-in-Docker
 )
 
 ensure_dockerfile() {
@@ -42,10 +49,22 @@ ARG DEBIAN_FRONTEND=noninteractive
 # ---------- Core build tools, Linters, Python, Node, Wasm deps ----------
 RUN --mount=type=cache,target=/var/cache/apt \
     apt-get update && \
-    # Core build tools
+    # Install Docker dependencies
+    apt-get install -y --no-install-recommends \
+      ca-certificates curl gnupg && \
+    install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
+    chmod a+r /etc/apt/keyrings/docker.gpg && \
+    echo \
+      "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+      tee /etc/apt/sources.list.d/docker.list > /dev/null && \
+    apt-get update && \
+    # Core build tools, Linters, Python, Node, Wasm deps, and Docker
     apt-get install -y --no-install-recommends \
       build-essential clang curl git pkg-config ca-certificates gnupg libssl-dev \
-      wget software-properties-common lsb-release shellcheck hyperfine openssh-client && \
+      wget software-properties-common lsb-release shellcheck hyperfine openssh-client tmux \
+      docker-ce docker-ce-cli containerd.io && \
     # Add Deadsnakes PPA for newer Python versions
     add-apt-repository -y ppa:deadsnakes/ppa && \
     # Add NodeSource repository for up-to-date NodeJS (v22+)
@@ -123,12 +142,15 @@ ARG GID=1000
 RUN userdel -r ubuntu && \
     groupadd -g ${GID} dev && \
     useradd -m -s /bin/bash -u ${UID} -g ${GID} dev && \
+    # Add dev user to the docker group
+    usermod -aG docker dev && \
     # Fix ownership of npm global modules so dev user can write to them
     chown -R dev:dev /usr/lib/node_modules
 
 USER dev
 WORKDIR /workspace
 COPY README.md .
+COPY CLAUDE.md .
 
 # Configure git for the dev user
 RUN git config --global user.email "swarm@dreamlab-ai.com" && \
@@ -143,9 +165,56 @@ ENV WASMEDGE_PLUGIN_PATH="/usr/local/lib/wasmedge"
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD ["sh", "-c", "command -v max >/dev/null"] || exit 1
 
-CMD ["/bin/bash"]
+CMD ["/bin/bash", "-c", "tmux new-session -d -s mcp 'ruv-swarm mcp start --protocol=stdio'; /bin/bash"]
 DOCKERFILE_EOF
     echo "Dockerfile created successfully."
+  fi
+}
+
+ensure_claude_md() {
+  if [[ ! -f "CLAUDE.md" ]]; then
+    echo "CLAUDE.md not found. Creating it..."
+    cat > CLAUDE.md <<'CLAUDE_MD_EOF'
+# CLAUDE.md – Project Boot Guide for Claude Code v4
+
+## 1  Core Directives
+1. **Production‑ready only.** Deliver runnable code; no TODOs or stubs.
+2. **Token‑efficient reasoning.** Think silently; reveal only final answer unless asked.
+3. **Edge‑case first.** Enumerate boundary conditions → write tests → implement.
+4. **Context pull rules.** If repo is large, fetch only needed fragments with paths + line numbers.
+5. **Tool usage.** Allowed:
+   * `bash -c "<command>"`
+   * `python - <<EOF … EOF` (v3.12 default)
+   * `ruv‑swarm` MCP tools (see §3)
+6. **No hedging / flattery / chit‑chat.**
+
+## 2  Environment Snapshot
+| Layer | Key Items |
+|-------|-----------|
+| **HW** | 24 CPU cores, 200 GB RAM, NVMe, NVIDIA GPUs, ZFS storage |
+| **Python 3.12** | `torch` 2.8 + CUDA 12.9, `tensorflow`, `keras`, `xgboost`, `wgpu` |
+| **Python 3.13** | Clean sandbox (`pip`, `setuptools`, `wheel`) |
+| **CUDA/Drivers** | `/usr/local/cuda` visible, cuDNN installed |
+| **Rust** | `rustup`, `clippy`, `cargo-edit`, `sccache` |
+| **Node 18 LTS** | Global CLIs inc. `ruv-swarm`, `@anthropic-ai/claude-code` |
+| **Linters** | `shellcheck`, `flake8`, `pylint`, `hadolint` |
+| **Utilities** | `tmux`, `hyperfine` |
+| **Containerization** | `docker`, `containerd` |
+| **Wasm/AI Runtimes** | `WasmEdge`, `OpenVINO`, `Modular MAX` |
+Path helpers:
+```bash
+source /opt/venv312/bin/activate   # default ML env
+source /opt/venv313/bin/activate   # Python 3.13 sandbox
+
+
+ruv mcp server is running in a tmux session. you can use and manage tmux sessions.
+
+a useful ruv swarm command to start with is:
+```bash
+ruv-swarm init hierarchical 5 --cognitive-diversity --ml-models all
+```
+CLAUDE_MD_EOF
+    echo "CLAUDE.md created successfully."
   fi
 }
 
@@ -184,6 +253,7 @@ EOF
 
 build() {
   ensure_dockerfile
+  ensure_claude_md
   export DOCKER_BUILDKIT=1
   docker build \
     --progress=plain \
