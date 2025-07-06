@@ -96,3 +96,4 @@ Always end with **✅ Done** so orchestrator can detect completion.
 1. Commit this *CLAUDE.md* to your repo root.
 2. Link deeper docs (e.g., `docs/flow/` and `docs/ruv-swarm/`) so Claude can open them on demand.
 3. Review quarterly to ensure environment versions and tool counts stay current.
+

@@ -31,27 +31,32 @@ detect_resources() {
   fi
 }
 
-# ---- tunables (edit if you change the Dockerfile flags) ---------------------
-RUN_OPTS=(
-  --gpus all
-  --cpus "${DOCKER_CPUS}"
-  --memory "${DOCKER_MEMORY}"
-  --security-opt no-new-privileges:true
-  --pids-limit 4096
-  # Removed --read-only and related tmpfs mounts for more permissive development environment
-  -u dev
-  --env-file "${ENVFILE}"
-  -v "${EXTERNAL_DIR:-/mnt/nvme/swarm-docker-environment/swarm-docker}:/workspace/ext"
-  -v "${HOME}/docker_data:/home/dev/data"
-  -v "${HOME}/docker_workspace:/home/dev/workspace"
-  -v "${HOME}/.ssh:/home/dev/.ssh:ro"
-  -v "${SSH_AUTH_SOCK:-/tmp/ssh-agent.sock}:/tmp/ssh-agent.sock"
-  -e SSH_AUTH_SOCK=/tmp/ssh-agent.sock
-  --network docker_ragflow
-  -v /var/run/docker.sock:/var/run/docker.sock # Mount Docker socket for DinD
-  --privileged # Required for Docker-in-Docker
-  -p 3010:3010 # Expose Claude Flow web interface
-)
+# ---- Runtime options setup (called after resource detection) ---------------------
+setup_run_opts() {
+  RUN_OPTS=(
+    --gpus all
+    --cpus "${DOCKER_CPUS}"
+    --memory "${DOCKER_MEMORY}"
+    --security-opt no-new-privileges:true
+    --pids-limit 4096
+    # Removed --read-only and related tmpfs mounts for more permissive development environment
+    -u dev
+    --env-file "${ENVFILE}"
+    -v "${EXTERNAL_DIR:-/mnt/nvme/swarm-docker-environment/swarm-docker}:/workspace/ext"
+    -v "${HOME}/docker_data:/home/dev/data"
+    -v "${HOME}/docker_workspace:/home/dev/workspace"
+    -v "${HOME}/docker_analysis:/home/dev/analysis"
+    -v "${HOME}/docker_logs:/home/dev/logs"
+    -v "${HOME}/docker_output:/home/dev/output"
+    -v "${HOME}/.ssh:/home/dev/.ssh:ro"
+    -v "${SSH_AUTH_SOCK:-/tmp/ssh-agent.sock}:/tmp/ssh-agent.sock"
+    -e SSH_AUTH_SOCK=/tmp/ssh-agent.sock
+    --network docker_ragflow
+    -v /var/run/docker.sock:/var/run/docker.sock # Mount Docker socket for DinD
+    --privileged # Required for Docker-in-Docker
+    -p 3010:3010 # Expose Claude Flow web interface
+  )
+}
 
 # ---- Pre-flight checks ---------------------
 preflight() {
@@ -68,6 +73,14 @@ preflight() {
 
   # Ensure required directories exist
   mkdir -p "${HOME}/docker_data" "${HOME}/docker_workspace"
+  mkdir -p "${HOME}/docker_analysis" "${HOME}/docker_logs" "${HOME}/docker_output"
+
+  echo "Created persistent directories:"
+  echo "  - ${HOME}/docker_data (general data)"
+  echo "  - ${HOME}/docker_workspace (workspace files)"
+  echo "  - ${HOME}/docker_analysis (analysis outputs)"
+  echo "  - ${HOME}/docker_logs (container logs)"
+  echo "  - ${HOME}/docker_output (processing outputs)"
 
   # Create network if it doesn't exist
   if ! docker network inspect docker_ragflow >/dev/null 2>&1; then
@@ -91,9 +104,10 @@ validate_config() {
 }
 
 ensure_dockerfile() {
-  if [[ ! -f "Dockerfile" ]]; then
-    echo "Dockerfile not found. Creating it..."
-    cat > Dockerfile <<'DOCKERFILE_EOF'
+  # Always remove the old Dockerfile to ensure it's up-to-date
+  rm -f Dockerfile
+  echo "Creating/updating Dockerfile..."
+  cat > Dockerfile <<'DOCKERFILE_EOF'
 ################################################################################
 # Stage 0 – CUDA 12.9 + cuDNN (official NVIDIA image)
 ################################################################################
@@ -146,7 +160,7 @@ RUN python3.12 -m venv /opt/venv312 && \
     python3.13 -m venv /opt/venv313 && \
     /opt/venv313/bin/pip install --upgrade pip wheel setuptools && \
     # Install all global CLI tools here
-    npm install -g ruv-swarm @anthropic-ai/claude-code @openai/codex @google/gemini-cli claude-flow@2.0.0
+    npm install -g claude-flow@2.0.0 ruv-swarm
 
 # ---------- Install Python ML & AI libraries into the 3.12 venv ----------
 # Install in logical, separate groups to prevent "dependency hell" and resolver timeouts.
@@ -228,7 +242,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
 CMD ["/bin/bash", "-c", "tmux new-session -d -s mcp 'ruv-swarm mcp start --protocol=stdio' && tmux new-session -d -s claude-flow 'npx claude-flow@2.0.0 start --ui --port 3010' && /bin/bash"]
 DOCKERFILE_EOF
     echo "Dockerfile created successfully."
-  fi
 }
 
 ensure_claude_md() {
@@ -245,20 +258,20 @@ ensure_claude_md() {
 5. **Allowed tools:**
    - `bash -c "<cmd>"`
    - `python - <<EOF … EOF` (Py 3.12 default)
-   - `ruv-swarm` MCP (25 tools)
-   - `claude-flow` MCP (87 tools)
+   - `ruv-swarm` MCP (placeholder implementation)
+   - `claude-flow` MCP (placeholder implementation)
 6. **No hedging / flattery / chit-chat.**
 
 ## 2. ENVIRONMENT SNAPSHOT
 
 | Layer | Key Items |
 |-------|-----------|
-| **HW** | 24 CPU / 200 GB RAM / NVMe / NVIDIA GPUs / ZFS |
+| **HW** | Auto-detected CPU/RAM / NVMe / NVIDIA GPUs |
 | **Python 3.12** | `torch` 2.8 + CUDA 12.9, `tensorflow`, `keras`, `xgboost`, `wgpu` |
 | **Python 3.13** | Clean sandbox (`pip`, `setuptools`, `wheel`) |
 | **CUDA + cuDNN** | `/usr/local/cuda` ready |
 | **Rust** | `rustup`, `clippy`, `cargo-edit`, `sccache` |
-| **Node 18 LTS** | CLIs: `ruv-swarm`, `@anthropic-ai/claude-code`, `claude-flow@2` |
+| **Node 22 LTS** | CLIs: `ruv-swarm`, `claude-flow` |
 | **Linters** | `shellcheck`, `flake8`, `pylint`, `hadolint` |
 | **Extras** | `tmux`, `hyperfine`, `docker`, `WasmEdge`, `OpenVINO`, `Modular MAX` |
 | **Web UI** | Claude-Flow UI → http://localhost:3010 |
@@ -300,7 +313,7 @@ Return one of:
 Always end with **✅ Done** so orchestrator can detect completion.
 
 ## 5. CODING & STYLE STANDARDS
-- **Language picks:** Py 3.12 for ML; Rust for perf; Node 18 for CLIs.
+- **Language picks:** Py 3.12 for ML; Rust for perf; Node 22 for CLIs.
 - **Tests:** `pytest -q`, `cargo test`, edge cases mandatory.
 - **Formatters:** `black`, `ruff`, `rustfmt`, `prettier`.
 - **Docs:** Public APIs need docstrings + one example.
@@ -341,13 +354,16 @@ CLAUDE_MD_EOF
 
 help() {
   cat <<EOF
-Usage: $0 {build|start|exec|logs|health|stop|rm|restart|watch|status|cleanup}
+Usage: $0 {build|start|daemon|exec|logs|health|stop|rm|restart|watch|status|cleanup|persist}
 
   build        Build the Docker image:
                  $0 build
 
-  start        Run or start the container with hardened flags:
+  start        Run or start the container with hardened flags (interactive):
                  $0 start
+
+  daemon       Run the container in background mode (detached):
+                 $0 daemon
 
   exec CMD     Run a command inside the running container:
                  $0 exec bash
@@ -375,6 +391,16 @@ Usage: $0 {build|start|exec|logs|health|stop|rm|restart|watch|status|cleanup}
 
   cleanup      Clean up Docker resources (system and volume prune):
                  $0 cleanup
+
+  persist      Save analysis outputs to persistent storage:
+                 $0 persist
+
+Data Persistence:
+  - Analysis outputs: ~/docker_analysis/
+  - Container logs: ~/docker_logs/
+  - Processing outputs: ~/docker_output/
+  - Workspace files: ~/docker_workspace/
+  - General data: ~/docker_data/
 EOF
 }
 
@@ -398,11 +424,62 @@ build() {
 }
 
 start() {
+  detect_resources
+  setup_run_opts
+
   if docker ps -a --format '{{.Names}}' | grep -q "^${NAME}$"; then
     docker start -ai "$NAME"
   else
     docker run "${RUN_OPTS[@]}" --name "$NAME" -it "$IMAGE"
   fi
+}
+
+daemon() {
+  detect_resources
+  setup_run_opts
+
+  if docker ps -a --format '{{.Names}}' | grep -q "^${NAME}$"; then
+    echo "Starting existing container in background..."
+    docker start "$NAME"
+  else
+    echo "Creating new container in background..."
+    docker run "${RUN_OPTS[@]}" --name "$NAME" -d "$IMAGE"
+  fi
+
+  echo "Container '$NAME' running in background"
+  echo "Access with: $0 exec bash"
+  echo "View logs with: $0 logs"
+  echo "Web UI available at: http://localhost:3010"
+}
+
+persist() {
+  if ! docker ps --format '{{.Names}}' | grep -q "^${NAME}$"; then
+    echo "Error: Container '$NAME' is not running"
+    return 1
+  fi
+
+  echo "Saving analysis outputs to persistent storage..."
+
+  # Create timestamped backup directory
+  TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+  BACKUP_DIR="${HOME}/docker_analysis/backup_${TIMESTAMP}"
+  mkdir -p "$BACKUP_DIR"
+
+  # Copy container analysis data
+  docker cp "$NAME:/home/dev/analysis/." "$BACKUP_DIR/" 2>/dev/null || echo "No analysis data found"
+  docker cp "$NAME:/home/dev/output/." "${HOME}/docker_output/" 2>/dev/null || echo "No output data found"
+
+  # Export container logs
+  docker logs "$NAME" > "${HOME}/docker_logs/container_${TIMESTAMP}.log"
+
+  # Export container state
+  docker inspect "$NAME" > "${BACKUP_DIR}/container_state.json"
+
+  echo "Data saved to:"
+  echo "  - Analysis: $BACKUP_DIR/"
+  echo "  - Outputs: ${HOME}/docker_output/"
+  echo "  - Logs: ${HOME}/docker_logs/container_${TIMESTAMP}.log"
+  echo "  - State: $BACKUP_DIR/container_state.json"
 }
 
 exec() {
@@ -473,7 +550,7 @@ watch() {
 
 # ---- Shell completion ---------------------
 _powerdev_completion() {
-  COMPREPLY=($(compgen -W "build start exec logs health status stop rm restart watch cleanup" -- "${COMP_WORDS[COMP_CWORD]}"))
+  COMPREPLY=($(compgen -W "build start daemon exec logs health status stop rm restart watch cleanup persist" -- "${COMP_WORDS[COMP_CWORD]}"))
 }
 complete -F _powerdev_completion powerdev.sh
 
@@ -487,7 +564,7 @@ if [[ $# -eq 0 ]]; then
 fi
 
 case $1 in
-  build|start|exec|logs|health|status|stop|rm|restart|watch|cleanup)
+  build|start|daemon|exec|logs|health|status|stop|rm|restart|watch|cleanup|persist)
     "$@"
     ;;
   *)
