@@ -1,0 +1,11 @@
+REQUESTY_TOKEN=
+ANTHROPIC_BASE_URL=
+ANTHROPIC_API_KEY=
+GITHUB_TOKEN=
+REQUESTY_TOKEN=""
+EXTERNAL_DIR="/mnt/projects"
+WASMEDGE_PLUGIN_PATH="/usr/local/lib/wasmedge"
+ANTHROPIC_MODEL="claude-sonnet-4"
+# API Keys for GenAI CLIs
+OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GOOGLE_API_KEY=AIzaSyxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
