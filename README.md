@@ -22,36 +22,37 @@ The environment is designed with clear separation between the host, the containe
 
 ```mermaid
 graph TD
-    subgraph Host Machine
+    subgraph Host["Host Machine"]
         A[Your Files]
         B[Docker Daemon]
         C[NVIDIA Drivers]
         D[swarm.sh]
-        E[".env file"]
-        F[".swarm-docker/ (Persistent Data)"]
+        E[.env file]
+        F[.swarm-docker/ Persistent Data]
     end
 
-    subgraph Docker Container
+    subgraph Container["Docker Container"]
         G[Container Filesystem]
-        H[dev user (UID 1000)]
+        H[dev user UID 1000]
         I[tmux]
         J[Docker-in-Docker]
     end
 
-    subgraph "Services (in tmux)"
-        K["claude-flow (UI on port 3010)"]
-        L["ruv-swarm (MCP Server)"]
+    subgraph Services["Services in tmux"]
+        K[claude-flow UI port 3010]
+        L[ruv-swarm MCP Server]
     end
 
-    D -- Manages --> B
-    B -- Runs --> G
-    C -- Accelerates --> G
-    E -- Configures --> G
-    F -- Mounts into --> G
-    G -- Contains --> H
-    H -- Runs --> I
-    I -- Manages --> K & L
-    J -- Enables --> G
+    D --> B
+    B --> G
+    C --> G
+    E --> G
+    F --> G
+    G --> H
+    H --> I
+    I --> K
+    I --> L
+    J --> G
 ```
 
 ## ⚙️ Prerequisites
