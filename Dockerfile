@@ -25,8 +25,8 @@ RUN --mount=type=cache,target=/var/cache/apt \
     # Core build tools, Linters, Python, Node, Wasm deps, and Docker
     apt-get install -y --no-install-recommends \
       build-essential clang curl git pkg-config ca-certificates gnupg libssl-dev \
-      wget software-properties-common lsb-release shellcheck hyperfine openssh-client tmux \
-      docker-ce docker-ce-cli containerd.io && \
+      wget software-properties-common lsb-release shellcheck hyperfine openssh-client tmux sudo \
+      docker-ce docker-ce-cli containerd.io unzip 7zip && \
     # Add Deadsnakes PPA for newer Python versions
     add-apt-repository -y ppa:deadsnakes/ppa && \
     # Add NodeSource repository for up-to-date NodeJS (v22+)
@@ -48,19 +48,20 @@ RUN --mount=type=cache,target=/var/cache/apt \
 RUN python3.12 -m venv /opt/venv312 && \
     /opt/venv312/bin/pip install --upgrade pip wheel setuptools && \
     python3.13 -m venv /opt/venv313 && \
-    /opt/venv313/bin/pip install --upgrade pip wheel setuptools && \
-    # Install all global CLI tools here
-    npm install -g claude-flow@2.0.0 ruv-swarm
+    /opt/venv313/bin/pip install --upgrade pip wheel setuptools
+
+# ---------- Install global CLI tools with claude-flow@alpha as primary ----------
+RUN npm install -g claude-flow@alpha ruv-swarm @anthropic-ai/claude-code @openai/codex @google/gemini-cli
 
 # ---------- Install Python ML & AI libraries into the 3.12 venv ----------
 # Install in logical, separate groups to prevent "dependency hell" and resolver timeouts.
 # STEP 1: Install wgpu separately and pin its version.
 RUN /opt/venv312/bin/pip install --no-cache-dir wgpu==0.22.2
 
-# STEP 2: Install the core, heavy ML frameworks.
+# STEP 2: Install the core, heavy ML frameworks with specific torch version.
 RUN /opt/venv312/bin/pip install --no-cache-dir \
     tensorflow \
-    torch torchvision torchaudio \
+    torch==2.7.1 torchvision torchaudio \
     keras
 
 # STEP 3: Install other common data science libraries.
@@ -77,8 +78,17 @@ RUN /opt/venv312/bin/pip install --no-cache-dir --pre modular
 
 # ---------- Rust tool-chain (AVX‑512) ----------
 ENV PATH="/root/.cargo/bin:${PATH}"
-RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --profile default && \
+# Update certificates and install Rust with retry logic
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    update-ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && \
+    for i in 1 2 3; do \
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile default && break || \
+        echo "Rust installation attempt $i failed, retrying..." && sleep 5; \
+    done && \
     echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> /etc/profile.d/rust.sh && \
+    . "$HOME/.cargo/env" && \
     cargo install cargo-edit
 ENV RUSTFLAGS="-C target-cpu=skylake-avx512 -C target-feature=+avx2,+avx512f,+avx512bw,+avx512dq"
 
@@ -104,12 +114,18 @@ ARG GID=1000
 RUN (id ubuntu &>/dev/null && userdel -r ubuntu) || true && \
     groupadd -g ${GID} dev && \
     useradd -m -s /bin/bash -u ${UID} -g ${GID} dev && \
-    # Add dev user to the docker group
-    usermod -aG docker dev && \
+    # Add dev user to the docker and sudo groups
+    usermod -aG docker,sudo dev && \
+    # Allow passwordless sudo for the dev user
+    echo "dev ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/dev && \
     # Fix ownership of npm global modules so dev user can write to them
     chown -R dev:dev /usr/lib/node_modules && \
     # Create python symlink for convenience
-    ln -s /usr/bin/python3.12 /usr/local/bin/python
+    ln -s /usr/bin/python3.12 /usr/local/bin/python && \
+    # Create workspace directories with proper ownership
+    mkdir -p /workspace /workspace/ext /workspace/logs && \
+    chown -R dev:dev /workspace
+
 
 USER dev
 WORKDIR /workspace
@@ -129,4 +145,6 @@ ENV WASMEDGE_PLUGIN_PATH="/usr/local/lib/wasmedge"
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD ["sh", "-c", "command -v max >/dev/null"] || exit 1
 
-CMD ["/bin/bash", "-c", "tmux new-session -d -s mcp 'ruv-swarm mcp start --protocol=stdio' && tmux new-session -d -s claude-flow 'npx claude-flow@2.0.0 start --ui --port 3010' && /bin/bash"]
+# CMD ["/bin/bash", "-c", "tmux new-session -d -s mcp 'ruv-swarm mcp start --protocol=stdio' && tmux new-session -d -s claude-flow 'npx claude-flow@2.0.0 start --ui --port 3010' && /bin/bash"]
+# Simplified CMD since claude-flow is not being installed for now
+CMD ["/bin/bash"]
