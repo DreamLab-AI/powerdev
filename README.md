@@ -176,6 +176,58 @@ The environment is configured via the `.env` file.
 
 ## 🔄 Core Workflows
 
+### Initial Setup & Common Patterns
+
+Here are the most common workflow patterns for using this environment:
+
+#### **Fresh Installation**
+```bash
+# 1. First time setup
+cp env_template .env
+nano .env                    # Configure your API keys
+./swarm.sh build            # Build the Docker image (takes 5-10 minutes)
+./swarm.sh start             # Start interactive container
+
+# 2. Access the environment
+# Web UI: http://localhost:3010
+# Shell: ./swarm.sh exec bash
+```
+
+#### **Daily Development**
+```bash
+# Start your development session
+./swarm.sh daemon            # Run container in background
+./swarm.sh status            # Check container health
+./swarm.sh exec bash         # Get a shell for development
+
+# Monitor and troubleshoot
+./swarm.sh logs              # View container logs
+./swarm.sh health            # Check health status
+```
+
+#### **Maintenance & Cleanup**
+```bash
+# Regular maintenance
+./swarm.sh persist           # Backup analysis data
+./swarm.sh restart           # Restart unhealthy container
+./swarm.sh cleanup           # Clean up Docker resources
+
+# Complete reset
+./swarm.sh stop              # Stop container
+./swarm.sh rm                # Remove container
+./swarm.sh build             # Rebuild image (if needed)
+```
+
+#### **Production Monitoring**
+```bash
+# Continuous monitoring
+./swarm.sh watch             # Auto-restart on failure (runs indefinitely)
+
+# Manual monitoring
+./swarm.sh status            # Detailed status report
+./swarm.sh health            # Quick health check
+```
+
 ### Using `claude-flow`
 
 `claude-flow` is the primary interface for managing tasks and agents. It starts automatically when the container runs.
