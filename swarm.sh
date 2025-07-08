@@ -43,7 +43,7 @@ setup_run_opts() {
     --cap-add SYS_ADMIN                 # Required for Docker-in-Docker
     --cap-add SYS_PTRACE                # Required for debugging
     --cap-drop ALL                      # Drop all capabilities first
-    --cap-add CHOWN,DAC_OVERRIDE,FOWNER,FSETID,KILL,SETGID,SETUID,NET_BIND_SERVICE,NET_RAW,SYS_CHROOT,MKNOD,AUDIT_WRITE,SETFCAP
+    --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER --cap-add FSETID --cap-add KILL --cap-add SETGID --cap-add SETUID --cap-add NET_BIND_SERVICE --cap-add NET_RAW --cap-add SYS_CHROOT --cap-add MKNOD --cap-add AUDIT_WRITE --cap-add SETFCAP
     --pids-limit 4096
     -u dev
     --env-file "${ENVFILE}"
