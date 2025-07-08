@@ -150,7 +150,7 @@ RUN userdel -r ubuntu && \
 USER dev
 WORKDIR /workspace
 COPY README.md .
-COPY CLAUDE.md .
+COPY CLAUDE-README.md .
 
 # Configure git for the dev user
 RUN git config --global user.email "swarm@dreamlab-ai.com" && \
@@ -172,10 +172,10 @@ DOCKERFILE_EOF
 }
 
 ensure_claude_md() {
-  if [[ ! -f "CLAUDE.md" ]]; then
-    echo "CLAUDE.md not found. Creating it..."
-    cat > CLAUDE.md <<'CLAUDE_MD_EOF'
-# CLAUDE.md – Project Boot Guide for Claude Code v4
+  if [[ ! -f "CLAUDE-README.md" ]]; then
+    echo "CLAUDE-README.md not found. Creating it..."
+    cat > CLAUDE-README.md <<'CLAUDE_MD_EOF'
+# CLAUDE-README.md – Project Boot Guide for Claude Code v4
 
 ## 1  Core Directives
 1. **Production‑ready only.** Deliver runnable code; no TODOs or stubs.
@@ -214,7 +214,7 @@ a useful ruv swarm command to start with is:
 ruv-swarm init hierarchical 5 --cognitive-diversity --ml-models all
 ```
 CLAUDE_MD_EOF
-    echo "CLAUDE.md created successfully."
+    echo "CLAUDE-README.md created successfully."
   fi
 }
 

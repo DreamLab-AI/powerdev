@@ -130,7 +130,7 @@ RUN (id ubuntu &>/dev/null && userdel -r ubuntu) || true && \
 USER dev
 WORKDIR /workspace
 COPY README.md .
-COPY CLAUDE.md .
+COPY CLAUDE-README.md .
 
 # Configure git for the dev user
 RUN git config --global user.email "swarm@dreamlab-ai.com" && \
@@ -145,6 +145,4 @@ ENV WASMEDGE_PLUGIN_PATH="/usr/local/lib/wasmedge"
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD ["sh", "-c", "command -v max >/dev/null"] || exit 1
 
-# CMD ["/bin/bash", "-c", "tmux new-session -d -s mcp 'ruv-swarm mcp start --protocol=stdio' && tmux new-session -d -s claude-flow 'npx claude-flow@2.0.0 start --ui --port 3010' && /bin/bash"]
-# Simplified CMD since claude-flow is not being installed for now
-CMD ["/bin/bash"]
+CMD ["/bin/bash", "-c", "tmux new-session -d -s claude-flow 'claude-flow start --ui --port 3010' && tmux new-session -d -s mcp 'ruv-swarm mcp start --protocol=stdio' && echo 'Services started: claude-flow UI on port 3010, ruv-swarm MCP server' && /bin/bash"]

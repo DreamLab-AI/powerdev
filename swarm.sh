@@ -140,10 +140,10 @@ validate_config() {
 
 
 ensure_claude_md() {
-  if [[ ! -f "CLAUDE.md" ]]; then
-    echo "CLAUDE.md not found. Creating it..."
-    cat > CLAUDE.md <<'CLAUDE_MD_EOF'
-# CLAUDE.md — Boot Guide (Claude Code v4 + Claude Flow Alpha)
+  if [[ ! -f "CLAUDE-README.md" ]]; then
+    echo "CLAUDE-README.md not found. Creating it..."
+    cat > CLAUDE-README.md <<'CLAUDE_MD_EOF'
+# CLAUDE-README.md — Boot Guide (Claude Code v4 + Claude Flow Alpha)
 
 ## 1. CORE DIRECTIVES
 1. **Prod-ready only** – ship runnable code; no TODOs or stubs.
@@ -264,7 +264,7 @@ Always end with **✅ Done** so orchestrator can detect completion.
 4. Create tasks with `claude-flow task create <type> "description"`
 
 CLAUDE_MD_EOF
-    echo "CLAUDE.md created successfully."
+    echo "CLAUDE-README.md created successfully."
   fi
 }
 
